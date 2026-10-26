@@ -1,31 +1,34 @@
+// Package store keeps accounts, devices and the ordered change log in SQLite.
 package store
 
 import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
+// Store is a SQLite database holding accounts, devices and changes.
 type Store struct {
 	db *sql.DB
 }
 
+// Account is one person whose devices share a change log.
 type Account struct {
 	ID       int64
 	Username string
 }
 
+// Open opens the database at location, creating it and applying any pending migrations.
 func Open(location string) (*Store, error) {
 	query := url.Values{}
 	query.Add("_pragma", "journal_mode(WAL)")
@@ -61,6 +64,7 @@ func dataSourceName(location string, pragmas url.Values) string {
 	return location + separator + pragmas.Encode()
 }
 
+// Close closes the database.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
@@ -75,7 +79,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	names, err := fs.Glob(migrationFiles, "migrations/*.sql")
 	if err != nil {
-		return err
+		return fmt.Errorf("list migrations: %w", err)
 	}
 	sort.Strings(names)
 	for _, name := range names {
@@ -98,11 +102,11 @@ func (s *Store) applyMigration(ctx context.Context, name string) error {
 	}
 	script, err := migrationFiles.ReadFile(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("read migration %s: %w", version, err)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin migration %s: %w", version, err)
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, string(script)); err != nil {
@@ -113,9 +117,13 @@ func (s *Store) applyMigration(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("record migration %s: %w", version, err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration %s: %w", version, err)
+	}
+	return nil
 }
 
+// EnsureAccount returns the account with the given username, creating it if it does not exist.
 func (s *Store) EnsureAccount(ctx context.Context, username string) (Account, error) {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO accounts (username) VALUES (?) ON CONFLICT(username) DO NOTHING`, username)
 	if err != nil {
@@ -131,11 +139,12 @@ func (s *Store) EnsureAccount(ctx context.Context, username string) (Account, er
 	return account, nil
 }
 
+// AccountByUsername returns the account with the given username and whether it exists.
 func (s *Store) AccountByUsername(ctx context.Context, username string) (Account, bool, error) {
 	var account Account
 	err := s.db.QueryRowContext(ctx, `SELECT id, username FROM accounts WHERE username = ?`, username).
 		Scan(&account.ID, &account.Username)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Account{}, false, nil
 	}
 	if err != nil {

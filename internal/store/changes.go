@@ -6,6 +6,7 @@ import (
 	"fmt"
 )
 
+// NewChange is a change to append to the log.
 type NewChange struct {
 	ID        string
 	Kind      string
@@ -15,6 +16,7 @@ type NewChange struct {
 	DeviceID  string
 }
 
+// StoredChange is a change read back from the log with its sequence number.
 type StoredChange struct {
 	Seq        int64
 	ID         string
@@ -26,6 +28,8 @@ type StoredChange struct {
 	ReceivedAt int64
 }
 
+// AppendChanges appends the changes in order and returns the sequence number of each.
+// A change whose id is already stored keeps its original sequence number.
 func (s *Store) AppendChanges(ctx context.Context, accountID int64, receivedAt int64, changes []NewChange) ([]int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -61,6 +65,8 @@ func (s *Store) AppendChanges(ctx context.Context, accountID int64, receivedAt i
 	return seqs, nil
 }
 
+// ChangesAfter returns up to limit changes with a sequence number above after,
+// and whether more remain.
 func (s *Store) ChangesAfter(ctx context.Context, accountID int64, after int64, limit int) ([]StoredChange, bool, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT seq, id, kind, record_id, data, updated_at, device_id, received_at FROM changes
@@ -84,7 +90,7 @@ func (s *Store) ChangesAfter(ctx context.Context, accountID int64, after int64, 
 		changes = append(changes, change)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("read changes: %w", err)
 	}
 	more := len(changes) > limit
 	if more {
