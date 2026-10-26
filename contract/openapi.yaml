@@ -23,6 +23,7 @@ info:
     Rules a schema cannot express
 
     - recordId for book and position is the book's sync key, the same 32 lowercase hex characters as contentHash in the book's data. For capture, tag and catalog it is a lowercase uuid. The change schema checks these patterns per kind.
+    - A book change's data.contentHash must equal its recordId, otherwise 400 invalid-change. A JSON Schema cannot compare two fields, so the schema does not check this.
     - deviceId must equal the device of the bearer token, otherwise 403 device-mismatch. That error has no index.
     - data null is a tombstone: the record was deleted. A tombstone is an ordinary change and follows the merge rule below.
     - The change envelope may carry extra fields. The server ignores and does not store them. Fields inside data are kept as sent, so a newer client can add fields and older clients ignore them.
