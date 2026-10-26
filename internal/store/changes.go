@@ -30,13 +30,13 @@ type StoredChange struct {
 
 // AppendChanges appends the changes in order and returns the sequence number of each.
 // A change whose id is already stored keeps its original sequence number.
-func (s *Store) AppendChanges(ctx context.Context, accountID int64, receivedAt int64, changes []NewChange) ([]int64, error) {
+func (s *Store) AppendChanges(ctx context.Context, accountID int64, receivedAt int64, changes []NewChange) (seqs []int64, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin push: %w", err)
 	}
-	defer tx.Rollback()
-	seqs := make([]int64, 0, len(changes))
+	defer rollbackUnlessDone(&err, tx)
+	seqs = make([]int64, 0, len(changes))
 	for _, change := range changes {
 		var data any
 		if change.Data != nil {
@@ -67,14 +67,14 @@ func (s *Store) AppendChanges(ctx context.Context, accountID int64, receivedAt i
 
 // ChangesAfter returns up to limit changes with a sequence number above after,
 // and whether more remain.
-func (s *Store) ChangesAfter(ctx context.Context, accountID int64, after int64, limit int) ([]StoredChange, bool, error) {
+func (s *Store) ChangesAfter(ctx context.Context, accountID int64, after int64, limit int) (_ []StoredChange, _ bool, err error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT seq, id, kind, record_id, data, updated_at, device_id, received_at FROM changes
 		 WHERE account_id = ? AND seq > ? ORDER BY seq LIMIT ?`, accountID, after, limit+1)
 	if err != nil {
 		return nil, false, fmt.Errorf("read changes: %w", err)
 	}
-	defer rows.Close()
+	defer joinCleanup(&err, "close change rows", rows.Close)
 	changes := []StoredChange{}
 	for rows.Next() {
 		var change StoredChange

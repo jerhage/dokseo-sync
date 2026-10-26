@@ -42,11 +42,23 @@ func Open(location string) (*Store, error) {
 		db.SetMaxOpenConns(1)
 	}
 	store := &Store{db: db}
-	if err := store.migrate(context.Background()); err != nil {
-		db.Close()
-		return nil, err
+	if migrateErr := store.migrate(context.Background()); migrateErr != nil {
+		joinCleanup(&migrateErr, "close database", db.Close)
+		return nil, migrateErr
 	}
 	return store, nil
+}
+
+func joinCleanup(err *error, what string, cleanup func() error) {
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		*err = errors.Join(*err, fmt.Errorf("%s: %w", what, cleanupErr))
+	}
+}
+
+func rollbackUnlessDone(err *error, tx *sql.Tx) {
+	if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+		*err = errors.Join(*err, fmt.Errorf("roll back transaction: %w", rollbackErr))
+	}
 }
 
 func isMemory(location string) bool {
@@ -90,10 +102,10 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) applyMigration(ctx context.Context, name string) error {
+func (s *Store) applyMigration(ctx context.Context, name string) (err error) {
 	version := strings.TrimSuffix(strings.TrimPrefix(name, "migrations/"), ".sql")
 	var applied int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, version).Scan(&applied)
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, version).Scan(&applied)
 	if err != nil {
 		return fmt.Errorf("check migration %s: %w", version, err)
 	}
@@ -108,7 +120,7 @@ func (s *Store) applyMigration(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("begin migration %s: %w", version, err)
 	}
-	defer tx.Rollback()
+	defer rollbackUnlessDone(&err, tx)
 	if _, err := tx.ExecContext(ctx, string(script)); err != nil {
 		return fmt.Errorf("apply migration %s: %w", version, err)
 	}

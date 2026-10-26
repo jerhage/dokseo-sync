@@ -15,7 +15,11 @@ func openMemory(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("Open(%q) error: %v", ":memory:", err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("Close() error: %v", err)
+		}
+	})
 	return store
 }
 
@@ -56,12 +60,18 @@ func TestAppliesEachMigrationOnceAcrossReopens(t *testing.T) {
 		t.Fatalf("Open(%q) error: %v", path, err)
 	}
 	recorded := countMigrations(t, first)
-	first.Close()
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close() first error: %v", err)
+	}
 	reopened, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open(%q) again error: %v", path, err)
 	}
-	defer reopened.Close()
+	t.Cleanup(func() {
+		if err := reopened.Close(); err != nil {
+			t.Errorf("Close() reopened error: %v", err)
+		}
+	})
 	if got := countMigrations(t, reopened); recorded == 0 || got != recorded {
 		t.Fatalf("migrations after reopening %q = %d, want %d (nonzero)", path, got, recorded)
 	}

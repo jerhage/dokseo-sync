@@ -62,14 +62,14 @@ func (s *Store) TouchDevice(ctx context.Context, accountID int64, deviceID strin
 }
 
 // ListDevices returns the account's unrevoked devices, oldest first.
-func (s *Store) ListDevices(ctx context.Context, accountID int64) ([]Device, error) {
+func (s *Store) ListDevices(ctx context.Context, accountID int64) (_ []Device, err error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, account_id, name, created_at, last_seen_at FROM devices
 		 WHERE account_id = ? AND revoked_at IS NULL ORDER BY created_at, id`, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("list devices: %w", err)
 	}
-	defer rows.Close()
+	defer joinCleanup(&err, "close device rows", rows.Close)
 	devices := []Device{}
 	for rows.Next() {
 		var device Device
