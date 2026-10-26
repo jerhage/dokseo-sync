@@ -39,7 +39,8 @@ info:
 
     1. The change with the greater updatedAt wins.
     2. When updatedAt is equal, the greater deviceId wins, compared as lowercase text.
-    3. The loser is dropped. This applies to a tombstone and to a live record alike.
+    3. When updatedAt and deviceId are both equal, the greater change id wins, compared as lowercase text.
+    4. The loser is dropped. This applies to a tombstone and to a live record alike.
 
     Applying the same change twice, or applying changes in a different order, gives the same result. A client should treat its own changes coming back in a pull as ordinary changes.
 
