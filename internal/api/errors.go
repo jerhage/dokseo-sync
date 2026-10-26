@@ -14,6 +14,7 @@ const (
 	codeInvalidChange      = "invalid-change"
 	codeTooLarge           = "too-large"
 	codeUnsupportedVersion = "unsupported-version"
+	codeRateLimited        = "rate-limited"
 	codeInternal           = "internal"
 )
 

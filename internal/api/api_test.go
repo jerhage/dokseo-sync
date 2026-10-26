@@ -17,18 +17,22 @@ import (
 )
 
 const (
-	testDeviceID = "00000000-0000-4000-8000-000000000002"
-	otherDevice  = "00000000-0000-4000-8000-000000000003"
-	testToken    = "test-token"
-	revokedToken = "revoked-token"
-	revokedID    = "00000000-0000-4000-8000-000000000004"
-	testNow      = int64(1772445001000)
+	testDeviceID  = "00000000-0000-4000-8000-000000000002"
+	otherDevice   = "00000000-0000-4000-8000-000000000003"
+	testToken     = "test-token"
+	revokedToken  = "revoked-token"
+	revokedID     = "00000000-0000-4000-8000-000000000004"
+	testNow       = int64(1772445001000)
+	testUsername  = "reader"
+	testPassword  = "correct horse"
+	allowedOrigin = "https://dokseo.example"
 )
 
 type fixture struct {
 	handler http.Handler
 	store   *store.Store
 	logs    *bytes.Buffer
+	now     time.Time
 }
 
 type errorResponse struct {
@@ -68,12 +72,15 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatalf("RevokeDevice(%q) error: %v", revokedID, err)
 	}
 	logs := &bytes.Buffer{}
-	handler := New(s, Options{
-		AccountID: account.ID,
-		Now:       func() time.Time { return time.UnixMilli(testNow) },
-		Logger:    slog.New(slog.NewTextHandler(logs, nil)),
+	f := &fixture{store: s, logs: logs, now: time.UnixMilli(testNow)}
+	f.handler = New(s, Options{
+		AccountID:      account.ID,
+		Now:            func() time.Time { return f.now },
+		Credentials:    Credentials{Username: testUsername, Password: testPassword},
+		AllowedOrigins: []string{allowedOrigin},
+		Logger:         slog.New(slog.NewTextHandler(logs, nil)),
 	})
-	return &fixture{handler: handler, store: s, logs: logs}
+	return f
 }
 
 func (f *fixture) do(method, target, token string, body []byte) *httptest.ResponseRecorder {

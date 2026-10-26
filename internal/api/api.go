@@ -19,12 +19,22 @@ const maxBodyBytes = 1 << 20
 
 var versionedPath = regexp.MustCompile(`^/v([0-9]+)(/|$)`)
 
+// Credentials is the username and password of the account.
+type Credentials struct {
+	Username string
+	Password string
+}
+
 // Options configures a server.
 type Options struct {
 	// AccountID is the account the server serves, as returned by store.EnsureAccount.
 	AccountID int64
 	// Now returns the current time. It defaults to time.Now.
 	Now func() time.Time
+	// Credentials is the username and password that POST /v1/devices accepts.
+	Credentials Credentials
+	// AllowedOrigins lists the browser origins that may call the API. Each is compared exactly.
+	AllowedOrigins []string
 	// Logger receives unexpected failures. It defaults to slog.Default.
 	Logger *slog.Logger
 }
@@ -34,12 +44,13 @@ type server struct {
 	accountID int64
 	now       func() time.Time
 	logger    *slog.Logger
+	creds     Credentials
+	failures  *failureLimiter
 }
 
-// New returns the handler that serves the API from s. It returns an http.Handler
-// and not an exported type because callers only mount it, which keeps the surface small.
+// New returns the handler that serves the API from s.
 func New(s *store.Store, opts Options) http.Handler {
-	srv := &server{store: s, accountID: opts.AccountID, now: opts.Now, logger: opts.Logger}
+	srv := &server{store: s, accountID: opts.AccountID, now: opts.Now, logger: opts.Logger, creds: opts.Credentials, failures: &failureLimiter{}}
 	if srv.now == nil {
 		srv.now = time.Now
 	}
@@ -50,8 +61,11 @@ func New(s *store.Store, opts Options) http.Handler {
 	mux.HandleFunc("GET /v1/info", srv.info)
 	mux.Handle("POST /v1/changes", srv.limitBody(srv.authenticate(http.HandlerFunc(srv.pushChanges))))
 	mux.Handle("GET /v1/changes", srv.limitBody(srv.authenticate(http.HandlerFunc(srv.pullChanges))))
+	mux.Handle("POST /v1/devices", srv.limitBody(http.HandlerFunc(srv.createDevice)))
+	mux.Handle("GET /v1/devices", srv.limitBody(srv.authenticate(http.HandlerFunc(srv.listDevices))))
+	mux.Handle("DELETE /v1/devices/{deviceId}", srv.authenticate(http.HandlerFunc(srv.revokeDevice)))
 	mux.HandleFunc("/", srv.notFound)
-	return mux
+	return cors(opts.AllowedOrigins, mux)
 }
 
 func (s *server) info(w http.ResponseWriter, r *http.Request) {
