@@ -79,6 +79,14 @@ manager that can put a file on disk works.
 `nix run github:jerhage/dokseo-sync -- --help` runs the binary without
 installing anything.
 
+## Backups
+
+The database runs in WAL mode, so it is three files and copying it while the server runs can miss the newest changes. Take a consistent copy first and back that up:
+
+```sh
+sqlite3 /var/lib/dokseo-sync/dokseo-sync.db "VACUUM INTO '/tmp/dokseo-sync.db'"
+```
+
 ## License
 
 MIT
