@@ -47,6 +47,38 @@ DOKSEO_SYNC_PASSWORD_FILE=password.txt ./dokseo-sync \
 
 The server listens on loopback by default and speaks plain HTTP. Put a reverse proxy or `tailscale serve` in front of it for HTTPS.
 
+## NixOS
+
+This repo is a flake. Add it as an input and import the module:
+
+```nix
+{
+  inputs.dokseo-sync.url = "github:jerhage/dokseo-sync";
+
+  # in your nixosSystem modules list
+  imports = [ inputs.dokseo-sync.nixosModules.default ];
+}
+```
+
+Then, on the host:
+
+```nix
+services.dokseo-sync = {
+  enable = true;
+  username = "reader";
+  passwordFile = "/run/secrets/dokseo-sync-password";
+  corsOrigins = [ "https://dokseo.example" ];
+};
+```
+
+The service runs as a `DynamicUser` and keeps its database in
+`/var/lib/dokseo-sync`. `passwordFile` is read by root and handed over as a
+systemd credential, so the service user never gets access to it; any secret
+manager that can put a file on disk works.
+
+`nix run github:jerhage/dokseo-sync -- --help` runs the binary without
+installing anything.
+
 ## License
 
 MIT
