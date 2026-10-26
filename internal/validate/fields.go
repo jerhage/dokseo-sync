@@ -75,22 +75,6 @@ func (o object) text(name string) (string, *Failure) {
 	return textValue(value, o.at(name))
 }
 
-func (o object) number(name string) (float64, *Failure) {
-	value, f := o.get(name)
-	if f != nil {
-		return 0, f
-	}
-	return numberValue(value, o.at(name))
-}
-
-func (o object) count(name string) (float64, *Failure) {
-	value, f := o.get(name)
-	if f != nil {
-		return 0, f
-	}
-	return countValue(value, o.at(name))
-}
-
 func (o object) object(name string) (object, *Failure) {
 	value, f := o.get(name)
 	if f != nil {

@@ -98,6 +98,7 @@ func wantFailure(t *testing.T, raw []byte, now int64, want Reason) {
 	_, failure := Validate(raw, now)
 	if failure == nil {
 		t.Fatalf("Validate(%s, %d) = valid, want failure %q", raw, now, want)
+		return
 	}
 	if failure.Reason != want {
 		t.Errorf("Validate(%s, %d) reason = %q at %q, want %q", raw, now, failure.Reason, failure.Path, want)
