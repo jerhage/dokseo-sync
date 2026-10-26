@@ -1,0 +1,272 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: dokseo-sync API
+  version: 0.1.0
+  description: >-
+    Ordered log of record changes for the devices of one Dokseo account. The server stores and
+    orders changes. It does not merge them and it never receives book files. See contract/README.md
+    for the rules a schema cannot express. A path under an unknown /vN/ answers 404 with code
+    unsupported-version and the error body.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local development. The port is a placeholder until the server exists.
+security:
+  - bearer: []
+tags:
+  - name: info
+  - name: devices
+  - name: changes
+paths:
+  /v1/info:
+    get:
+      operationId: getInfo
+      tags: [info]
+      summary: Server name, version and supported API versions
+      security: []
+      responses:
+        '200':
+          description: Server information.
+          content:
+            application/json:
+              schema:
+                $ref: schemas/info.schema.json
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/devices:
+    post:
+      operationId: createDevice
+      tags: [devices]
+      summary: Register a device
+      description: >-
+        Checks the account's username and password and creates a device with a new token. The
+        token is shown once in this response. The server stores only its SHA-256.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: schemas/device-request.schema.json
+      responses:
+        '201':
+          description: Device created.
+          content:
+            application/json:
+              schema:
+                $ref: schemas/device-created.schema.json
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/Internal'
+    get:
+      operationId: listDevices
+      tags: [devices]
+      summary: List the account's devices
+      responses:
+        '200':
+          description: The devices that hold a token.
+          content:
+            application/json:
+              schema:
+                $ref: schemas/device-list.schema.json
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/devices/{deviceId}:
+    delete:
+      operationId: revokeDevice
+      tags: [devices]
+      summary: Revoke a device's token
+      description: A device may revoke itself.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      responses:
+        '204':
+          description: Token revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/changes:
+    post:
+      operationId: pushChanges
+      tags: [changes]
+      summary: Push changes
+      description: >-
+        Idempotent: a change id already stored returns its existing seq and is not stored again.
+        All or nothing: if any change is invalid nothing is stored and the response is 400
+        invalid-change with the index of the first invalid change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: schemas/push-request.schema.json
+      responses:
+        '200':
+          description: One entry per change, in request order.
+          content:
+            application/json:
+              schema:
+                $ref: schemas/push-response.schema.json
+        '400':
+          $ref: '#/components/responses/InvalidChange'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/DeviceMismatch'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/Internal'
+    get:
+      operationId: pullChanges
+      tags: [changes]
+      summary: Pull changes
+      description: >-
+        Returns changes with seq greater than after, ascending, including the caller's own.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 500
+      responses:
+        '200':
+          description: A page of stored changes.
+          content:
+            application/json:
+              schema:
+                $ref: schemas/pull-response.schema.json
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/Internal'
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: The device token from POST /v1/devices.
+  responses:
+    Unauthorized:
+      description: Missing, unknown or revoked token.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: unauthorized
+              message: missing, unknown or revoked token
+    DeviceMismatch:
+      description: The deviceId of a change is not the device of the token.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: device-mismatch
+              message: the deviceid of a change is not the device of the token
+    NotFound:
+      description: No such device.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: not-found
+              message: no such device
+    InvalidRequest:
+      description: The request is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: invalid-request
+              message: the request is malformed
+    InvalidChange:
+      description: A change is invalid, or the request is malformed. invalid-change carries the index of the first invalid change.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: invalid-change
+              message: updatedAt is more than 24 hours in the future
+              index: 3
+    TooLarge:
+      description: The request body is over 1 MiB.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: too-large
+              message: the request body is over 1 mib
+    RateLimited:
+      description: Too many requests.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: rate-limited
+              message: too many requests
+    Internal:
+      description: Unexpected server failure.
+      content:
+        application/json:
+          schema:
+            $ref: schemas/error.schema.json
+          example:
+            error:
+              code: internal
+              message: unexpected server failure
