@@ -15,7 +15,7 @@ All bodies are JSON in UTF-8. Every route except the first two needs `Authorizat
 | POST | `/v1/changes` | bearer | Push 1 to 500 changes, all or nothing |
 | GET | `/v1/changes?after=&limit=` | bearer | Pull changes in order of `seq` |
 
-The full contract, the JSON Schemas and examples are in [`contract/`](contract/). The rules a schema cannot express are in [`contract/README.md`](contract/README.md).
+The full contract, the JSON Schemas and examples are in [`contract/`](contract/). The rules a schema cannot express are in [`contract/openapi.yaml`](contract/openapi.yaml).
 
 ## License
 
