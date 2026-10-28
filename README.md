@@ -47,6 +47,64 @@ DOKSEO_SYNC_PASSWORD_FILE=password.txt ./dokseo-sync \
 
 The server listens on loopback by default and speaks plain HTTP. Put a reverse proxy or `tailscale serve` in front of it for HTTPS.
 
+## Container
+
+Images are published to `ghcr.io/jerhage/dokseo-sync` for amd64 and arm64 on each version tag. A release `v0.1.2` gets the tags `0.1.2`, `0.1` and `latest`.
+
+The image listens on `0.0.0.0:8080`, keeps the database in the `/data` volume and runs as uid 65532.
+
+```sh
+docker run -d --name dokseo-sync \
+  -p 127.0.0.1:8080:8080 \
+  -v dokseo-sync-data:/data \
+  -v "$PWD/password.txt:/run/secrets/dokseo-sync-password:ro" \
+  -e DOKSEO_SYNC_PASSWORD_FILE=/run/secrets/dokseo-sync-password \
+  -e DOKSEO_SYNC_USERNAME=reader \
+  -e DOKSEO_SYNC_CORS_ORIGINS=https://dokseo.example \
+  ghcr.io/jerhage/dokseo-sync:latest
+```
+
+The password file must be readable by uid 65532, so give it mode `644` and keep it in a host directory that only you can enter. A Compose file secret is a bind mount too, so the same applies to it.
+
+The same with Compose, using a file secret that mounts at `/run/secrets/<name>`:
+
+```yaml
+services:
+  dokseo-sync:
+    image: ghcr.io/jerhage/dokseo-sync:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - data:/data
+    environment:
+      DOKSEO_SYNC_USERNAME: reader
+      DOKSEO_SYNC_CORS_ORIGINS: https://dokseo.example
+      DOKSEO_SYNC_PASSWORD_FILE: /run/secrets/dokseo-sync-password
+    secrets:
+      - dokseo-sync-password
+
+volumes:
+  data:
+
+secrets:
+  dokseo-sync-password:
+    file: ./password.txt
+```
+
+The examples use `docker`; `podman` takes the same arguments. To build the image yourself:
+
+```sh
+podman build --build-arg VERSION=0.1.2 -t dokseo-sync .
+```
+
+Docker does not look for a `Containerfile` by itself, so name it:
+
+```sh
+docker build -f Containerfile --build-arg VERSION=0.1.2 -t dokseo-sync .
+```
+
+As with the binary, put a reverse proxy or `tailscale serve` in front of it for HTTPS.
+
 ## NixOS
 
 This repo is a flake. Add it as an input and import the module:
@@ -86,6 +144,8 @@ The database runs in WAL mode, so it is three files and copying it while the ser
 ```sh
 sqlite3 /var/lib/dokseo-sync/dokseo-sync.db "VACUUM INTO '/tmp/dokseo-sync.db'"
 ```
+
+In the container the database is `/data/dokseo-sync.db`. The image has no `sqlite3`, so run `VACUUM INTO` from the host against the volume's path, or from a sqlite3 container that mounts the same volume.
 
 ## License
 

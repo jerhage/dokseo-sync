@@ -1,0 +1,13 @@
+.git
+.github
+.local
+nix
+flake.nix
+flake.lock
+result
+dist
+*.db
+*.db-*
+/dokseo-sync
+README.md
+LICENSE
