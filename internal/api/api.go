@@ -13,7 +13,7 @@ import (
 )
 
 // Version is the server version reported by GET /v1/info. A release sets it with -ldflags -X.
-var Version = "0.1.0"
+var Version = "dev"
 
 const maxBodyBytes = 1 << 20
 

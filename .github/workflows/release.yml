@@ -15,6 +15,11 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./...
+      - name: the tag and nix/package.nix agree
+        run: |
+          want=${GITHUB_REF_NAME#v}
+          have=$(sed -n 's/.*version = "\(.*\)";/\1/p' nix/package.nix)
+          [ "$want" = "$have" ] || { echo "tag $want != nix/package.nix $have"; exit 1; }
 
   image:
     needs: test
